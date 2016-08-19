@@ -1,0 +1,82 @@
+== Overview
+
+
+== Configure your environment
+
+* Edit the following files:
+** hosts.ose.vars
++
+----
+#openshift_master_identity_providers=[{'name': 'htpasswd_auth', 'login': 'true', 'challenge': 'true', 'kind': 'HTPasswdPasswordIdentityProvider', 'filename': '/etc/origin/master/htpasswd'}]
+#openshift_master_htpasswd_file=/home/ec2-user/htpasswd.ose
+
+openshift_master_identity_providers=[{'name': 'ldap', 'challenge': 'true', 'login': 'true', 'kind': 'LDAPPasswordIdentityProvider','attributes': {'id': ['dn'], 'email': ['mail'], 'name': ['cn'], 'preferredUsername': ['uid']}, 'bindDN': 'uid=ose-mwl-auth,cn=users,cn=accounts,dc=opentlc,dc=com', 'bindPassword': 'DMEODEMO', 'ca': 'ipa-ca.crt','insecure': 'false', 'url': 'ldaps://ipa1.opentlc.com:636/cn=users,cn=accounts,dc=opentlc,dc=com?uid'}]
+
+
+----
+
+== Configure the variables in the correct workdir subfolder
+
+This will configure all of the different options
+
+=== run master script
+
+Eventually we will have a single playbook to run all the comamnds
+#ansible-playbook  -i 127.0.0.1, ansible/master.yml --extra-vars "workdir=./workdir/example1"
+
+==== Provision Infrastructure Playbook
+
+- ansible-playbook  -i 127.0.0.1, ansible/provision_hosts.yml --extra-vars "workdir=./workdir/example1"
+
+
+==== Prep Bastion
+
+- ansible-playbook  -i 127.0.0.1, ansible/prep_bastion.yml --extra-vars "workdir=./workdir/example1"
+
+==== Configure Bastion
+
+export BASTION=`./scripts/list-hosts.sh bastion | awk '{print $1}'`
+export KEYNAME=osesharedkey
+
+ssh -i ./workdir/example1/${KEYNAME}.pem ec2-user@${BASTION}
+
+
+* From Bastion host
+- ansible-playbook  -i 127.0.0.1, ansible/configure_bastion.yml --extra-vars "workdir=./workdir/example1"
+
+==== Deploy OpenShift From Bastion
+
+ansible-playbook -i workdir/example1/hosts ansible/openshift_prereqs.yml --extra-vars "workdir=./workdir/example1"
+
+
+
+idx=1; (echo "---"; \
+for vol in $(scripts/list-volumes.sh | \
+awk '/available/ {print $1}'); do \
+sed -e "s/PV_SIZE/10Gi/" -e "s/PV_ACCESSMODE/ReadWriteOnce/" -e "s/PV_NAME/infra-pv$idx/" -e "s/PV_EBS_VOLID/$vol/" \
+ansible/files/ebs-pv-sample.yml; \
+echo "---"; let idx=idx+1; done )> workdir/example1/pvs.yml
+
+export AWS_ACCESS_KEY=''
+export AWS_SECRET_KEY=''
+export S3_ACCESS_KEY_ID=''
+export S3_SECRET_ACCESS_KEY=''
+
+
+time ansible-playbook -i workdir/example1/hosts /usr/share/ansible/openshift-ansible/playbooks/byo/config.yml
+
+
+==== Post Deploy from Bastion
+export FM=`ansible masters[0] --list-hosts|  awk '{print $1}'`
+scp -i ~/.ssh/${KEYNAME}.pem -r ec2-user@${FM}:~/.kube ~
+oc annotate namespace default openshift.io/node-selector='region=infra' --overwrite
+
+oc create -f pvs.yml
+
+
+ansible-playbook ansible/registry.yml
+ansible-playbook ansible/logging.yaml --step
+ansible-playbook ansible/metrics.yaml
+
+
+==== Tests

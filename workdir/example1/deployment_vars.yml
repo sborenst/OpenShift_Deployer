@@ -1,0 +1,46 @@
+---
+# set these parameters to control the region, keypair, and AMI that are launched
+
+credentials:
+  rhn_username: "rhn-sa-sborenst"
+  rhn_password: "DEMO"
+  rhn_poolid: "8a85f981544efea201544fba3DEMO"
+master_public_dns: "master.{{public_zone_fqdn}}"
+apps_public_dns: "*.cloudapps.{{public_zone_fqdn}}"
+public_zone_fqdn: "test-ml.opentlc.com"
+private_zone_fqdn: "internal.{{public_zone_fqdn}}"
+# AWS Region, AZ and AMIs
+aws_region: ap-southeast-2
+aws_amis: ami-286e4f4b
+aws_vpc_name: test-ml.opentlc.com
+aws_key_name: osesharedkey
+aws_project: test-ml
+s3_registry_bucket_name: "docker-registry.{{aws_project}}.bucket" #docker-registry.test-ml.sborenst.bucket
+s3_registry_bucket_access: "arn:aws:iam::719622469867:user/sborenst"
+
+# Environment Sizing
+
+how_many:
+  masters: 2
+  nodes: 3
+  infranodes: 2
+  bastions: 1
+  storages: 0
+  etcds: 0
+instance_types:
+    masters: t2.medium
+    nodes: t2.medium
+    infranodes: t2.medium
+    bastions: t2.medium
+    etcds: t2.medium
+    storages: t2.large
+
+
+
+
+# Variables that should eventually get automated
+zone_id: "Z3CL4F9961DEMO"
+internal_zone_id: "Z2GBH846ZGDEMO"
+
+# /etc/origin/master
+ipa_ca: ipa-ca.crt

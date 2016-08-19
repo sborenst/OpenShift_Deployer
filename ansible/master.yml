@@ -1,0 +1,82 @@
+- name: Starting environment deployment
+  hosts: localhost
+  connection: local
+  gather_facts: False
+
+  vars_files:
+  - "../{{workdir}}/AZs_By_Region.yml"  # I don't think i need this
+  - "../{{workdir}}/AMIs_By_Region.yml"
+  - "../{{workdir}}/aws_vars.yml"
+  - "../{{workdir}}/deployment_vars.yml"
+
+
+  tasks:
+
+  - fail: msg="You must set a workdir value, for example ansible-playbook  -i 127.0.0.1, ansible/master.yml --extra-vars 'workdir=./workdir/example' "
+    when: workdir is not defined
+
+  - debug: msg="Your selected workdir is {{workdir}}" verbosity:4
+
+  - name: Copy over the terraform template to workdir {{workdir}}
+    command: cp -rv ../workdir/template/tf/ "../{{workdir}}/tf"
+    tags:
+     - terraform
+  - name: Create j2 template for variables.tf file
+    template: src=./files/variables.tf.j2 dest="../{{workdir}}/tf/variables.tf"
+    tags:
+     - terraform
+  - name: Run Terraform get
+    shell: ( cd "../{{workdir}}/tf" && terraform plan || terraform get)
+    register: terraform.get
+    tags:
+     - terraform
+  - name: Run Terraform Plan
+    shell: ( cd "../{{workdir}}/tf" && terraform plan )
+    register: terraform_plan
+    tags:
+      - terraform
+  - debug:
+      var: terraform_plan.stdout
+    tags:
+     - terraform
+  - name: Run Terraform apply
+    shell: ( cd "../{{workdir}}/tf" && terraform apply )
+    register: terraform_apply
+    tags:
+     - terraform
+
+  - debug: msg="{{terraform_apply.stdout}}"
+    tags:
+     - terraform
+
+### Populate ansible hosts file for deployment_name
+  - name: Create Inventory
+    shell: ../scripts/gen-inventory.sh ../{{workdir}}/hosts.ose.vars > ../{{workdir}}/hosts
+    tags:
+     - create_inventory
+
+### Start configure bastion stage
+  - name: Find out bastion hostname
+    shell: ../scripts/list-hosts.sh bastion | awk '{print $1}'
+    register: bastion_hostname
+  - debug: msg="bastion_hostname is {{bastion_hostname.stdout}}" verbosity:4
+    tags:
+     - config_bastion
+
+  - name: copy directories to bastion host
+    shell: scp -i ../{{workdir}}/{{aws_key_name}}.pem -r ../ansible.cfg ../ansible ../scripts  ec2-user@{{bastion_hostname.stdout}}:~
+
+  - name: Remove old workdir .git workaround
+    shell: ssh -i  ~/.ssh/{{aws_key_name}}.pem -l ec2-user {{bastion_hostname.stdout}} "[ -d {{workdir}} ] && rm -rf  ~/{{workdir}}"
+    tags:
+     - config_bastion
+
+  - name: Creating workdir on bastion host
+    shell: ssh -i  ~/.ssh/{{aws_key_name}}.pem -l ec2-user {{bastion_hostname.stdout}} "[ -d ~/{{workdir}} ] || mkdir -p ~/workdir"
+    tags:
+     - config_bastion
+
+  - name: copy workdir directories to bastion host
+    shell: scp -i ../{{workdir}}/{{aws_key_name}}.pem -r ../{{workdir}}  ec2-user@{{bastion_hostname.stdout}}:~/{{workdir}}
+    tags:
+     - config_bastion

@@ -1,0 +1,51 @@
+- name: Starting environment deployment
+  hosts: localhost
+  connection: local
+  gather_facts: False
+
+  vars_files:
+  - "../{{workdir}}/AZs_By_Region.yml"  # I don't think i need this
+  - "../{{workdir}}/AMIs_By_Region.yml"
+  - "../{{workdir}}/aws_vars.yml"
+  - "../{{workdir}}/deployment_vars.yml"
+
+
+  tasks:
+
+  - fail: msg="You must set a workdir value, for example ansible-playbook  -i 127.0.0.1, ansible/master.yml --extra-vars 'workdir=./workdir/example' "
+    when: workdir is not defined
+
+  - debug: msg="Your selected workdir is {{workdir}}" verbosity:4
+
+## We should have this as its own directory
+  - name: Copy over the terraform template to workdir {{workdir}}
+    command: cp -rv ../workdir/template/tf/ "../{{workdir}}/tf"
+    tags:
+     - terraform
+  - name: Create j2 template for variables.tf file
+    template: src=./files/variables.tf.j2 dest="../{{workdir}}/tf/variables.tf"
+    tags:
+     - terraform
+  - name: Run Terraform get
+    shell: ( cd "../{{workdir}}/tf" && terraform plan || terraform get)
+    register: terraform.get
+    tags:
+     - terraform
+  - name: Run Terraform Plan
+    shell: ( cd "../{{workdir}}/tf" && terraform plan )
+    register: terraform_plan
+    tags:
+      - terraform
+  - debug:
+      var: terraform_plan.stdout
+    tags:
+     - terraform
+  - name: Run Terraform apply
+    shell: ( cd "../{{workdir}}/tf" && terraform apply )
+    register: terraform_apply
+    tags:
+     - terraform
+  - debug:
+      var: terraform_apply.stdout
+    tags:
+     - terraform

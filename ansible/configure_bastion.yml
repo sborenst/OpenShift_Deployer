@@ -1,0 +1,88 @@
+- name: Configure Bastion Host
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  become: yes # sudo
+  vars_files:
+    - "../{{workdir}}/AZs_By_Region.yml"  # I don't think i need this
+    - "../{{workdir}}/AMIs_By_Region.yml"
+    - "../{{workdir}}/aws_vars.yml"
+    - "../{{workdir}}/deployment_vars.yml"
+
+  tasks:
+    - name: install prereq packages
+      yum: name="{{ item }}" state=present
+      with_items:
+        - python
+        - unzip
+        - bash-completion
+        - bind-utils
+        - atomic-openshift-clients
+      tags:
+       - config_bastion
+       - install_packages_bastion
+
+    - name: Set up required packages on Bastion
+      shell:  "curl 'https://s3.amazonaws.com/aws-cli/awscli-bundle.zip' -o 'awscli-bundle.zip';
+              unzip awscli-bundle.zip;
+              sudo ./awscli-bundle/install -i /usr/local/aws -b /usr/local/bin/aws;"
+      tags:
+       - config_bastion
+       - install_aws_client
+
+    - name: Configure aws settings
+      become: no
+      shell: "/usr/local/bin/aws configure set aws_access_key_id {{ec2_access_key}};
+              /usr/local/bin/aws configure set aws_secret_access_key {{ec2_secret_key}};
+              /usr/local/bin/aws configure set default.region {{aws_region}};"
+      tags:
+       - config_bastion
+       - config_aws_client
+
+    - name: Copy key to /root/.ssh
+      copy: "src=../{{workdir}}/{{aws_key_name}}.pem dest=~/.ssh/ mode=0600"
+      tags:
+       - config_bastion
+       - config_ssh
+
+    - name: Copy key to ~/.ssh
+      become: no
+      copy: "src=../{{workdir}}/{{aws_key_name}}.pem dest=~/.ssh/ mode=0600"
+      tags:
+       - config_bastion
+       - config_ssh
+
+    - name: Create /root/.ssh/config
+      become: yes
+      lineinfile:
+        state: present
+        create: yes
+        mode: 0600
+        dest: ~/.ssh/config
+        line: "{{ item }}"
+      with_items:
+        - "Host ec2*"
+        - "User ec2-user"
+        - "IdentityFile ~/.ssh/{{aws_key_name}}.pem"
+      tags:
+       - config_bastion
+       - config_ssh
+
+    - name: Create ~/.ssh/config
+      become: no
+      lineinfile:
+        state: present
+        create: yes
+        mode: 0600
+        dest: ~/.ssh/config
+        line: "{{ item }}"
+      with_items:
+        - "Host ec2*"
+        - "User ec2-user"
+        - "IdentityFile ~/.ssh/{{aws_key_name}}.pem"
+      tags:
+       - config_bastion
+       - config_ssh
+
+
+#rsync -a . ec2-52-18-46-8.eu-west-1.compute.amazonaws.com:

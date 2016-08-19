@@ -1,0 +1,163 @@
+[OSEv3:children]
+masters
+nodes
+etcd
+# no lb group defined, handled by AWS ELB
+# no nfs group defined, will use S3 storage for registry and ELB backend for other PVs
+
+[masters]
+ec2-52-63-84-25.ap-southeast-2.compute.amazonaws.com
+ec2-52-64-41-182.ap-southeast-2.compute.amazonaws.com
+
+[etcd]
+ec2-52-63-84-25.ap-southeast-2.compute.amazonaws.com
+ec2-52-64-41-182.ap-southeast-2.compute.amazonaws.com
+
+[nodes]
+ec2-52-63-252-251.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'primary', 'zone': 'ap-southeast-2a'}"
+ec2-52-62-181-134.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'primary', 'zone': 'ap-southeast-2b'}"
+ec2-52-62-50-50.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'primary', 'zone': 'ap-southeast-2b'}"
+ec2-52-64-60-41.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'infra', 'zone': 'ap-southeast-2a'}"
+ec2-52-64-29-100.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'infra', 'zone': 'ap-southeast-2b'}"
+ec2-52-63-84-25.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'primary', 'zone': 'ap-southeast-2b'}" openshift_schedulable=False
+ec2-52-64-41-182.ap-southeast-2.compute.amazonaws.com openshift_node_labels="{'region': 'primary', 'zone': 'ap-southeast-2a'}" openshift_schedulable=False
+
+# Set variables common for all OSEv3 hosts
+[OSEv3:vars]
+ansible_ssh_user=ec2-user
+ansible_become=yes
+debug_level=2
+deployment_type=openshift-enterprise
+openshift_install_examples=true
+
+use_cluster_metrics=true
+
+# Configure master API and console ports.
+openshift_master_api_port=8443
+openshift_master_console_port=8443
+
+# Session options
+openshift_master_session_name=ssn
+openshift_master_session_max_seconds=3600
+
+# urls
+openshift_master_logout_url=https://labs.opentlc.com/
+openshift_master_metrics_public_url=https://hawkular-metrics.cloudapps.test-ml.opentlc.com/hawkular/metrics
+openshift_master_logging_public_url=https://kibana.cloudapps.test-ml.opentlc.com
+
+# default subdomain to use for exposed routes
+openshift_master_default_subdomain=cloudapps.test-ml.opentlc.com
+
+# htpasswd auth and htpasswd file to distribute
+#openshift_master_identity_providers=[{'name': 'htpasswd_auth', 'login': 'true', 'challenge': 'true', 'kind': 'HTPasswdPasswordIdentityProvider', 'filename': '/etc/origin/master/htpasswd'}]
+#openshift_master_htpasswd_file=/home/ec2-user/htpasswd.ose
+
+openshift_master_identity_providers=[{'name': 'ldap', 'challenge': 'true', 'login': 'true', 'kind': 'LDAPPasswordIdentityProvider','attributes': {'id': ['dn'], 'email': ['mail'], 'name': ['cn'], 'preferredUsername': ['uid']}, 'bindDN': 'uid=ose-mwl-auth,cn=users,cn=accounts,dc=opentlc,dc=com', 'bindPassword': '10b7386a-f63b-4254-8fa0-6b5c2723197a', 'ca': 'ipa-ca.crt','insecure': 'false', 'url': 'ldaps://ipa1.opentlc.com:636/cn=users,cn=accounts,dc=opentlc,dc=com?uid'}]
+openshift_master_ldap_ca_file=/etc/origin/master/ipa-ca.crt
+
+
+# docker options
+openshift_docker_options="-l warn --ipv6=false --insecure-registry 172.30.0.0/16"
+
+# Cloud Provider Configuration
+#
+# AWS
+openshift_cloudprovider_kind=aws
+openshift_cloudprovider_aws_access_key="DEMODEMO"
+openshift_cloudprovider_aws_secret_key="DEMODEMO"
+#openshift_cloudprovider_aws_access_key="{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+#openshift_cloudprovider_aws_secret_key="{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+
+
+# Project Configuration
+#osm_project_request_message=''
+#osm_project_request_template=''
+#osm_mcs_allocator_range='s0:/2'
+#osm_mcs_labels_per_project=5
+#osm_uid_allocator_range='1000000000-1999999999/10000'
+
+# Enable cockpit
+osm_use_cockpit=true
+osm_cockpit_plugins=['cockpit-kubernetes']
+
+# Native high availability cluster method with optional load balancer.
+# If no lb group is defined, the installer assumes that a load balancer has
+# been preconfigured. For installation the value of
+# openshift_master_cluster_hostname must resolve to the load balancer
+# or to one or all of the masters defined in the inventory if no load
+# balancer is present.
+openshift_master_cluster_method=native
+openshift_master_cluster_hostname=master.test-ml.opentlc.com
+openshift_master_cluster_public_hostname=master.test-ml.opentlc.com
+
+# Override the default controller lease ttl
+#osm_controller_lease_ttl=30
+
+# Configure controller arguments
+#osm_controller_args={'resource-quota-sync-period': ['10s']}
+
+# Configure api server arguments
+#osm_api_server_args={'max-requests-inflight': ['400']}
+
+
+# default project node selector
+osm_default_node_selector='region=primary'
+
+openshift_hosted_router_selector='region=infra'
+openshift_registry_selector='region=infra'
+
+# Override the default pod eviction timeout
+#openshift_master_pod_eviction_timeout=5m
+
+# default storage plugin dependencies to install, by default the ceph and
+# glusterfs plugin dependencies will be installed, if available.
+#osn_storage_plugin_deps=['ceph','glusterfs']
+
+
+
+# Configure the multi-tenant SDN plugin (default is 'redhat/openshift-ovs-subnet')
+# os_sdn_network_plugin_name='redhat/openshift-ovs-multitenant'
+
+# Configure SDN cluster network CIDR block. This network block should
+# be a private block and should not conflict with existing network
+# blocks in your infrastructure that pods may require access to.
+# Can not be changed after deployment.
+osm_cluster_network_cidr=10.10.0.0/16
+osm_host_subnet_length=8
+
+
+# configure how often node iptables rules are refreshed
+#openshift_node_iptables_sync_period=5s
+
+# Configure nodeIP in the node config
+# This is needed in cases where node traffic is desired to go over an
+# interface other than the default network interface.
+#openshift_node_set_node_ip=True
+
+# Force setting of system hostname when configuring OpenShift
+# This works around issues related to installations that do not have valid dns
+# entries for the interfaces attached to the host.
+#openshift_set_hostname=True
+
+# Configure dnsIP in the node config
+#openshift_dns_ip=172.30.0.1
+
+# Configure node kubelet arguments
+openshift_node_kubelet_args={'max-pods': ['40'], 'image-gc-high-threshold': ['90'], 'image-gc-low-threshold': ['80']}
+logrotate_scripts=[{"name": "syslog", "path": "/var/log/cron\n/var/log/maillog\n/var/log/messages\n/var/log/secure\n/var/log/spooler\n", "options": ["daily", "rotate 7", "compress", "sharedscripts", "missingok"], "scripts": {"postrotate": "/bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true"}}]
+
+# openshift-ansible will wait indefinitely for your input when it detects that the
+# value of openshift_hostname resolves to an IP address not bound to any local
+# interfaces. This mis-configuration is problematic for any pod leveraging host
+# networking and liveness or readiness probes.
+# Setting this variable to true will override that check.
+#openshift_override_hostname_check=true
+
+# Configure dnsmasq for cluster dns, switch the host's local resolver to use dnsmasq
+# and configure node's dnsIP to point at the node's local dnsmasq instance. Defaults
+# to True for Origin 1.2 and OSE 3.2. False for 1.1 / 3.1 installs, this cannot
+# be used with 1.0 and 3.0.
+# openshift_use_dnsmasq=False
+
+# masterConfig.volumeConfig.dynamicProvisioningEnabled, configurable as of 1.2/3.2, enabled by default
+openshift_master_dynamic_provisioning_enabled=True

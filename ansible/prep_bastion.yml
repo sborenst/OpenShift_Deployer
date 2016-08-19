@@ -1,0 +1,79 @@
+- name: Starting environment deployment
+  hosts: localhost
+  connection: local
+  gather_facts: False
+
+  vars_files:
+  - "../{{workdir}}/AZs_By_Region.yml"  # I don't think i need this
+  - "../{{workdir}}/AMIs_By_Region.yml"
+  - "../{{workdir}}/aws_vars.yml"
+  - "../{{workdir}}/deployment_vars.yml"
+
+
+  tasks:
+
+
+
+### Populate ansible hosts file for deployment_name
+
+
+  - name: Create Inventory
+    shell: ../scripts/gen-inventory.sh ../{{workdir}}/hosts.ose.vars > ../{{workdir}}/hosts
+    tags:
+     - create_inventory
+     - debug
+
+  - name: Fix up inventory for {{public_zone_fqdn}}
+    replace: dest=../{{workdir}}/hosts regexp='REPL_DOMAIN_REPL' replace='{{public_zone_fqdn}}' backup=yes
+    tags:
+     - config_bastion
+     - patch_inventory
+
+  - name: Fix up inventory for ipa certificate
+    replace: dest=../{{workdir}}/hosts regexp='REPL_ipa_ca_REPL' replace='{{ipa_ca}}'
+    tags:
+     - config_bastion
+     - patch_inventory
+
+  - name: Fix up inventory for REPL_ACCESS_KEY_REPL
+    replace: dest=../{{workdir}}/hosts regexp='REPL_ACCESS_KEY_REPL' replace='{{ec2_access_key}}'
+    tags:
+     - config_bastion
+     - patch_inventory
+
+  - name: Fix up inventory for REPL_SECRET_KEY_REPL
+    replace: dest=../{{workdir}}/hosts regexp='REPL_SECRET_KEY_REPL' replace='{{ec2_secret_key}}'
+    tags:
+     - config_bastion
+     - patch_inventory
+
+
+
+### Start configure bastion stage
+  - name: Find out bastion hostname
+    shell: ../scripts/list-hosts.sh bastion | awk '{print $1}'
+    register: bastion_hostname
+  - debug: msg="bastion_hostname is {{bastion_hostname.stdout}}" verbosity:4
+    tags:
+     - config_bastion
+ #This should eventually be a git pull.
+  - name: copy directories to bastion host
+    shell: scp -i ../{{workdir}}/{{aws_key_name}}.pem -r ../ansible.cfg ../ansible ../scripts  ec2-user@{{bastion_hostname.stdout}}:~
+    tags:
+     - config_bastion
+     - copy_scripts_playbooks
+  - name: Remove old workdir .git workaround
+    shell: ssh -i  ~/.ssh/{{aws_key_name}}.pem -l ec2-user {{bastion_hostname.stdout}} "[ -d {{workdir}} ] ||  rm -rf  ~/{{workdir}}"
+    tags:
+     - config_bastion
+     - copy_workdir
+  - name: Creating workdir on bastion host
+    shell: ssh -i  ~/.ssh/{{aws_key_name}}.pem -l ec2-user {{bastion_hostname.stdout}} "[ -d ~/{{workdir}} ] || mkdir -p ~/workdir"
+    tags:
+     - config_bastion
+     - copy_workdir
+  - name: copy workdir directories to bastion host
+    shell: scp -i ../{{workdir}}/{{aws_key_name}}.pem -r ../{{workdir}}  ec2-user@{{bastion_hostname.stdout}}:~/{{workdir}}
+    tags:
+     - config_bastion
+     - copy_workdir

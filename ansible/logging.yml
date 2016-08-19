@@ -1,0 +1,149 @@
+- name: Installation and Configuration of Log Aggregation
+  hosts: masters
+  gather_facts: no
+  tasks:
+
+  # make sure that we are using the default user (system:admin) and the default project
+  - name: Change the oc context
+    command: "oc login -u system:admin"
+
+  - name: Check for the logging project
+    command: "oc get project logging"
+    register: logging_out
+    ignore_errors: true
+
+  # we will eventually want to look at the logging and metrics project, so
+  # this is useful
+  # using karla for now because i forget what users there are
+  - name: Make sborenst user a cluster-admin
+    command: oadm policy add-cluster-role-to-user cluster-admin sborenst
+
+  # eventually we will change the region to be appropriate and this command will need to change
+  - name: Create the logging project
+    command: "oadm new-project logging"
+    when: logging_out | failed
+
+  - name: Remove the default node selector on the logging project
+    command: oc patch namespace/logging -p '{"metadata":{"annotations":{"openshift.io/node-selector":""}}}'
+
+  - name: Switch to the logging project
+    command: "oc project logging"
+
+  - name: Check for logging-deployer secret OK if Fails
+    command: "oc get secret logging-deployer"
+    register: logging_deployer_secret_out
+    ignore_errors: true
+
+  - name: Create the null logging-deployer secret
+    command: oc secrets new logging-deployer nothing=/dev/null
+    when: logging_deployer_secret_out | failed
+
+  - name: Check for logging-deployer service account OK if Fails
+    command: oc get sa logging-deployer
+    register: logging_deployer_sa_out
+    ignore_errors: true
+
+  - name: Create the logging-deployer service account
+    shell: 'echo ''{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"logging-deployer"},"secrets":[{"name":"logging-deployer"}]}'' | oc create -f -'
+    when: logging_deployer_sa_out | failed
+
+  - name: Wait for the logging-deployer secrets OK if Fails
+    shell: "oc get secrets | grep logging-deployer-token"
+    register: deployer_token_out
+    until: deployer_token_out | success
+    retries: 15
+    delay: 10
+
+  - name: Grant the edit role to the logging-deployer service account
+    command: oc policy add-role-to-user edit system:serviceaccount:logging:logging-deployer
+
+  - name: Put the fluentd service account in the privileged SCC
+    command: oadm policy add-scc-to-user privileged system:serviceaccount:logging:aggregated-logging-fluentd
+
+  - name: Give fluentd cluster-reader permissions
+    command: oadm policy add-cluster-role-to-user cluster-reader system:serviceaccount:logging:aggregated-logging-fluentd
+
+  # if the artifacts are already deployed, don't process the deployer template
+  - name: Check for the deployed artifacts OK if fails
+    command: oc get template logging-support-template
+    register: logging_support_template_out
+    ignore_errors: true
+
+#  - name: Get GUID from machine
+#    shell: "hostname|cut -f2 -d-|cut -f1 -d."
+#    register: guid_id
+#    ignore_errors: false
+
+#  - name: Instantiate the logging deployer via the template
+#    shell: >
+#      oc process logging-deployer-template -n openshift
+#      -v KIBANA_HOSTNAME=kibana.cloudapps-{{ guid_id.stdout }}.oslab.opentlc.com
+#      -v PUBLIC_MASTER_URL=https://master1-{{ guid_id.stdout }}.oslab.opentlc.com:8443
+#      -v ES_CLUSTER_SIZE=1
+#      -v ES_INSTANCE_RAM=1024M | oc create -f -
+#    when: logging_support_template_out | failed
+
+
+  - name: Create the pvc for the es pod
+    shell: 'echo '{"kind": "List","apiVersion": "v1","metadata": {},"items": [{"kind": "PersistentVolumeClaim","apiVersion": "v1","metadata": {"name": "logging-es-1","namespace": "logging","labels": {"logging-infra": "logging-es"}},"spec": {"accessModes": ["ReadWriteOnce"],"resources": {"requests": {"storage": "10Gi"}}},"status": { }}]}' | oc create -f -'
+    when: logging_deployer_sa_out | failed
+
+  - name: Instantiate the logging deployer via the template
+    shell: >
+      oc process logging-deployer-template -n openshift
+      -v KIBANA_HOSTNAME=kibana.cloudapps.test-ml.sborenst.opentlc.com
+      -v PUBLIC_MASTER_URL=https://master.test-ml.sborenst.opentlc.com:8443
+      -v ES_CLUSTER_SIZE=1
+      -v ES_INSTANCE_RAM=1024M | oc create -f -
+    when: logging_support_template_out | failed
+
+
+
+  - name: Wait for the deployer to finish
+    script: files/check_pod_complete.sh 'logging-deployer-[a-zA-Z0-9]*'
+    register: check_out
+    until: check_out | success
+    retries: 15
+    delay: 10
+
+  - name: Determine elastic search DC
+    shell: "oc get dc | awk '/logging-es-[a-zA-Z0-9]*/{ print $1 }'"
+    register: logging_es_out
+
+  - name: Add PersistentVolume  to es deployment config
+    command: oc volume dc/{{ logging_es_out.stdout }} --add --name=elasticsearch-storage -t pvc --claim-name=logging-es-1 --overwrite
+
+  - name: Modify the kibana DC with a node selector for infra
+    command: oc patch dc/logging-kibana -p '{"spec":{"template":{"spec":{"nodeSelector":{"region":"infra"}}}}}'
+
+  - name: Modify the es DC with a node selector for infra
+    command: oc patch dc/{{ logging_es_out.stdout }} -p '{"spec":{"template":{"spec":{"nodeSelector":{"region":"infra"}}}}}'
+
+  # if the image streams exist, don't process the support template
+  - name: Check for logging-kibana imagestream OK if fails
+    command: oc get is logging-kibana
+    register: kibana_is_out
+    ignore_errors: true
+
+  - name: Process the logging support template  OK if fails
+    shell: "oc process logging-support-template | oc create -f -"
+    when: kibana_is_out | failed
+
+  - name: Determine image stream version tags
+    script: files/image_stream_version_check.sh logging-support-template logging
+    register: is_version_out
+
+  - name: "Pull the image stream tags"
+    command: oc import-image {{ item }}:{{ is_version_out.stdout }} --insecure=true
+    with_items:
+      - "logging-auth-proxy"
+      - "logging-elasticsearch"
+      - "logging-fluentd"
+      - "logging-kibana"
+    register: image_tag_pull_out
+    retries: 2
+    until: image_tag_pull_out | success
+  - name: Scale curator to 1
+    command: oc scale dc/logging-curator --replicas=1
+  - name: Scale fluentd to number of nodes
+    command: oc scale dc/logging-fluentd --replicas={{ groups['nodes'] | count - groups['masters'] }}

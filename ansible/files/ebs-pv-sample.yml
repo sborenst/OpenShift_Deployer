@@ -1,0 +1,12 @@
+apiVersion: "v1"
+kind: "PersistentVolume"
+metadata:
+  name: "PV_NAME" 
+spec:
+  capacity:
+    storage: "PV_SIZE" 
+  accessModes:
+    - "PV_ACCESSMODE"
+  awsElasticBlockStore: 
+    fsType: "ext4" 
+    volumeID: "PV_EBS_VOLID" 

@@ -1,0 +1,109 @@
+
+variable "aws_region" {
+ default = "{{aws_region}}"
+}
+
+# TODO: use community AZ module to refer to AZs (primary, secondary, etc)
+# for now we need to update AZ list manually if changing region name
+variable "aws_azs" {
+  default = "{{AZs[aws_region][0]}},{{AZs[aws_region][1]}},{{AZs[aws_region][-1]}}"
+}
+
+
+variable "aws_amis" {
+  default = {  # RHEL 7.2
+  {% for item in AMIs %}
+    {{ item }} = "{{ AMIs[item][0] }}"
+  {% endfor %}
+  }
+}
+
+variable "instance_types" {
+  default = {
+    "bastion" = "{{instance_types['bastions']}}"
+    "master" = "{{instance_types['masters']}}"
+    "etcd" = "{{instance_types['etcds']}}"
+    "node" = "{{instance_types['nodes']}}"
+    "infranode" = "{{instance_types['infranodes']}}"
+    "storage" = "{{instance_types['storages']}}"
+  }
+}
+
+variable "instance_counts" {
+  default {
+    "master" = {{how_many['masters']}}
+    "node" = {{how_many['nodes']}}
+    "etcd" = {{how_many['etcds']}}
+    "infranode" = {{how_many['infranodes']}}
+    "storage" = {{how_many['storages']}}
+
+  }
+}
+
+variable "pv_ebs_count" {
+  default = 2
+}
+
+variable "vpc_cidr" {
+  default = "192.168.0.0/16"
+}
+variable "vpc_name" {
+  default = "{{aws_vpc_name}}"
+}
+
+variable "cidr_private_subnets" {
+  default = "192.168.1.0/24,192.168.2.0/24"
+}
+
+variable "cidr_public_subnets" {
+  default = "192.168.10.0/24,192.168.20.0/24"
+}
+
+# Public zone to be created
+
+variable "public_zone_fqdn" {
+  default = "{{public_zone_fqdn}}"
+}
+
+# Private zone to be created
+
+variable "private_zone_fqdn" {
+  default = "{{private_zone_fqdn}}"
+}
+
+# Master public dns name
+variable "master_public_dns" {
+  default = "{{master_public_dns}}"
+}
+
+# cloud applications public dns name
+
+# ID of pre-created project zone in AWS Route53
+variable "apps_public_dns" {
+  default = "{{apps_public_dns}}"
+}
+
+
+
+# assumes key pair has already been created or imported using "aws ec2 create-key-pair/import-key-pair"
+variable "aws_key_name" {
+  default = "{{aws_key_name}}"
+}
+
+variable "aws_project" {
+  default = "{{aws_project}}"
+}
+
+variable "s3_registry_bucket_name" {
+  default = "{{s3_registry_bucket_name}}"
+}
+
+# placeholder variable for additional user to grant access to s3 registry
+variable "s3_registry_bucket_access" {
+  default = "{{s3_registry_bucket_access}}"
+ }
+
+# placeholder variables for RHN fields in bootstrap template
+variable "rhn_username" { default = "{{credentials['rhn_username']}}" }
+variable "rhn_password" { default = "{{credentials['rhn_password']}}" }
+variable "rhn_poolid" { default = "{{credentials['rhn_poolid']}}"}

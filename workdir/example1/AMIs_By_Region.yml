@@ -1,0 +1,23 @@
+AMIs:
+ ap-south-1:
+  - ami-cdbdd7a2
+ eu-west-1:
+  - ami-ce66d8bd
+ ap-southeast-1:
+  - ami-dccc04bf
+ ap-southeast-2:
+  - ami-286e4f4b
+ eu-central-1:
+  - ami-b6688dd9
+ ap-northeast-2:
+  - ami-d35d93bd
+ ap-northeast-1:
+  - ami-a05854ce
+ us-east-1:
+  - ami-85241def
+ sa-east-1:
+  - ami-2b068447
+ us-west-1:
+  - ami-f7eb9b97
+ us-west-2:
+  - ami-a3fa16c3
